@@ -4682,8 +4682,9 @@ mlly@^1.2.0, mlly@^1.5.0:
     pkg-types "^1.0.3"
     ufo "^1.3.2"
 
-monero-ts@../monero-ts:
+"monero-ts@https://github.com/mainnet-pat/monero-ts#0.9.7-fs":
   version "0.9.7"
+  resolved "https://github.com/mainnet-pat/monero-ts#a35a34d1c38eb91eb569f3dda426470f395ca9d5"
   dependencies:
     "@babel/runtime" "^7.23.2"
     "@types/node" "^20.6.0"

@@ -32,7 +32,7 @@
     "@walletconnect/web3wallet": "^1.10.1",
     "chota": "^0.9.2",
     "indexeddb-fs": "http://github.com/mainnet-pat/indexeddb-fs#2.1.5",
-    "monero-ts": "../monero-ts",
+    "monero-ts": "https://github.com/mainnet-pat/monero-ts#0.9.7-fs",
     "pinia": "^2.1.7",
     "quasar": "^2.14.3",
     "vue": "^3.3.4",
