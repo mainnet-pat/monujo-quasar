@@ -8,25 +8,28 @@
   const store = useStore()
 
   const seedphrase = ref(undefined as (string | undefined));
+  const disableButtons = ref(false);
   const restoreHeight =  ref(1 as number);
   const emit = defineEmits(['initWallet']);
 
   const nameWallet = "mywallet";
 
   async function createNewWallet() {
-    const mainnetWallet = await createWalletFull({
+    disableButtons.value = true;
+    const wallet = await createWalletFull({
       path: `${nameWallet}-${store.network}`,
       networkType: MoneroNetworkType.parse(store.network ?? "mainnet"),
       server: store.server,
     });
-    emit('initWallet', mainnetWallet);
+    emit('initWallet', wallet);
   }
 
   async function importWallet(restoreHeight: number) {
     try{
       if(!seedphrase.value) throw("Enter a seed phrase to import wallet")
+      disableButtons.value = true;
 
-      const mainnetWallet = await createWalletFull({
+      const wallet = await createWalletFull({
         seed: seedphrase.value,
         path: `${nameWallet}-${store.network}`,
         networkType: MoneroNetworkType.parse(store.network ?? "mainnet"),
@@ -34,7 +37,7 @@
         restoreHeight: restoreHeight
       });
 
-      emit('initWallet', mainnetWallet);
+      emit('initWallet', wallet);
     } catch (error) {
       const errorMessage = typeof error == 'string' ? error : "Not a valid seed phrase"
       $q.notify({
@@ -49,7 +52,10 @@
 <template>
   <fieldset style="margin-top: 15px;">
     <h4><img class="icon plusIcon" src="images/plus-square.svg"> Create new wallet</h4>
-    <input @click="createNewWallet()" class="button primary" type="button" value="Create">
+    <div style="display: flex; flex-direction: row; gap: 20px;">
+      <input @click="createNewWallet()" :disabled="disableButtons" class="button primary" type="button" value="Create">
+      <div v-if="disableButtons" class="loader"></div>
+    </div>
     <br><br>
     <hr>
     <br>
@@ -59,7 +65,10 @@
     <span>Restore height: </span>
     <input v-model="restoreHeight" type="number" style="width: 100%;">
     <br>
-    <input @click="importWallet(restoreHeight)" class="button primary" type="button" style="margin-top:15px" value="Import">
+    <div style="display: flex; flex-direction: row; gap: 20px; margin-top:15px">
+      <input @click="importWallet(restoreHeight)" :disabled="disableButtons" class="button primary" type="button" value="Import">
+      <div v-if="disableButtons" class="loader"></div>
+    </div>
     <br><br>
   </fieldset>
 </template>
