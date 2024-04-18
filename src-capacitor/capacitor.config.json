@@ -1,6 +1,6 @@
 {
-  "appId": "com.cashonize.quasar",
-  "appName": "Cashonize",
+  "appId": "com.monujo.quasar",
+  "appName": "Monujo",
   "webDir": "www",
   "server": {
     "androidScheme": "https",

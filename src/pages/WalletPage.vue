@@ -1,50 +1,46 @@
 <script setup lang="ts">
   import newWalletView from 'src/components/newWallet.vue'
-  import bchWalletView from 'src/components/bchWallet.vue'
-  import myTokensView from 'src/components/myTokens.vue'
+  import walletView from 'src/components/wallet.vue'
   import settingsMenu from 'src/components/settingsMenu.vue'
   import connectView from 'src/components/walletConnect.vue'
-  import createTokensView from 'src/components/createTokens.vue'
   import WC2TransactionRequest from 'src/components/walletconnect/WC2TransactionRequest.vue';
   import { ref, computed } from 'vue'
-  import { Wallet, TestNetWallet, BalanceResponse, BCMR, binToHex } from 'mainnet-js'
-  import type { CancelWatchFn } from 'mainnet-js';
   import type { Web3WalletTypes } from '@walletconnect/web3wallet';
   import { useStore } from 'src/stores/store'
   import { useSettingsStore } from 'src/stores/settingsStore'
   import { useWalletconnectStore } from 'src/stores/walletconnectStore'
+  import { BalanceResponse } from 'src/interfaces/interfaces';
   const store = useStore()
   const settingsStore = useSettingsStore()
   const walletconnectStore = useWalletconnectStore()
   import { useWindowSize } from '@vueuse/core'
+  import { MoneroNetworkType, MoneroWalletFull, MoneroWalletListener, createWalletFull } from 'monero-ts'
   const { width } = useWindowSize();
   const isMobile = computed(() => width.value < 480)
 
   const props = defineProps<{
-    uri: string
+    uri: string | undefined
   }>()
 
   const nameWallet = 'mywallet';
-  const defaultBcmrIndexer = 'https://bcmr.paytaca.com/api';
-  const defaultBcmrIndexerChipnet = 'https://bcmr-chipnet.paytaca.com/api';
-  let cancelWatchBchtxs: undefined | CancelWatchFn;
-  let cancelWatchTokenTxs: undefined | CancelWatchFn;
+  let cancelWatchWallet: undefined | (() => Promise<void>);
 
   const displayView = ref(undefined as (number | undefined));
   const transactionRequestWC = ref(undefined as any);
   const dappMetadata = ref(undefined as any);
   const dappUriUrlParam = ref(undefined as undefined|string);
-  const bcmrIndexer = computed(() => store.network == 'mainnet' ? defaultBcmrIndexer : defaultBcmrIndexerChipnet)
-  
+
   // check if wallet exists
-  const mainnetWalletExists = await Wallet.namedExists(nameWallet);
-  const testnetWalletExists = await TestNetWallet.namedExists(nameWallet);
+  const mainnetWalletExists = await MoneroWalletFull.walletExists(`${nameWallet}-${store.network}`, undefined);
+  const testnetWalletExists = await MoneroWalletFull.walletExists(`${nameWallet}-${store.network}`, undefined);
   const walletExists = mainnetWalletExists || testnetWalletExists;
-  if(walletExists){
+  if (walletExists) {
     // initialise wallet on configured network
-    const readNetwork = localStorage.getItem('network');
-    const walletClass = (readNetwork != 'chipnet')? Wallet : TestNetWallet;
-    const initWallet = await walletClass.named(nameWallet);
+    const initWallet = await MoneroWalletFull.openWallet({
+      path: `${nameWallet}-${store.network}`,
+      server: store.server,
+      networkType: MoneroNetworkType.parse(store.network ?? "mainnet"),
+    });
     setWallet(initWallet);
   }
 
@@ -52,9 +48,12 @@
     displayView.value = newView;
   }
 
-  async function setWallet(newWallet: TestNetWallet){
+  async function setWallet(newWallet: MoneroWalletFull){
     changeView(1);
     store.wallet = newWallet;
+    store.walletAddress = await newWallet.getPrimaryAddress();
+    store.network = MoneroNetworkType.toString(await newWallet.getNetworkType());
+    store.mnemonic = await newWallet.getSeed();
     console.time('initweb3wallet');
     await walletconnectStore.initweb3wallet();
     console.timeEnd('initweb3wallet');
@@ -65,92 +64,121 @@
       dappUriUrlParam.value = props.uri
       changeView(4);
     }
-    // fetch bch balance
+    // fetch wallet balance
     console.time('Balance Promises');
-    const promiseWalletBalance = store.wallet.getBalance() as BalanceResponse;
-    const promiseMaxAmountToSend = store.wallet.getMaxAmountToSend();
-    const balancePromises = [promiseWalletBalance,promiseMaxAmountToSend];
-    const [resultWalletBalance, resultMaxAmountToSend] = await Promise.all(balancePromises);
+    const promiseWalletBalance = store.wallet.getBalance();
+    const promiseunlockedBalance = store.wallet.getUnlockedBalance();
+    const promiseLastBlockHeight = store.wallet.getDaemonHeight();
+    const promiseExchangeRate = fetch("https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=usd", {});
+    const promises = [promiseWalletBalance,promiseunlockedBalance,promiseExchangeRate,promiseLastBlockHeight];
+    const [resultWalletBalance, resultunlockedBalance, exchangeRateResponse, lastBlockHeight] = await Promise.all(promises);
+    store.lastBlockHeight = lastBlockHeight as number;
+    const exchangeRate = await (exchangeRateResponse as Response).json();
+    store.exchangeRate = exchangeRate.monero.usd;
     console.timeEnd('Balance Promises');
     // fetch token balance
-    console.time('fetch tokenUtxos Promise');
-    let tokenCategories = await store.updateTokenList();
-    console.timeEnd('fetch tokenUtxos Promise');
-    store.balance = resultWalletBalance;
-    store.maxAmountToSend = resultMaxAmountToSend;
-    const utxosPromise = store.wallet?.getAddressUtxos();
+    store.balance = {
+      piconero: Number(resultWalletBalance),
+      xmr: Number(resultWalletBalance) / 1e12,
+      usd: Number(resultWalletBalance) * exchangeRate.monero.usd,
+    } as BalanceResponse
+
+    store.unlockedBalance = {
+      piconero: Number(resultunlockedBalance),
+      xmr: Number(resultunlockedBalance) / 1e12,
+      usd: Number(resultWalletBalance) * exchangeRate.monero.usd,
+    } as BalanceResponse;
     setUpWalletSubscriptions();
-    // get plannedTokenId
-    const walletUtxos = await utxosPromise;
-    const preGenesisUtxo = walletUtxos?.find(utxo => !utxo.token && utxo.vout === 0);
-    store.plannedTokenId = preGenesisUtxo?.txid ?? '';
-    if(!tokenCategories) return // should never happen
-    console.time('importRegistries');
-    await importRegistries(tokenCategories);
-    console.timeEnd('importRegistries');
-    store.nrBcmrRegistries = BCMR.getRegistries().length ?? 0;
-    await store.fetchAuthUtxos();
   }
 
   async function setUpWalletSubscriptions(){
-    cancelWatchBchtxs = store.wallet?.watchBalance(async (newBalance) => {
-      store.balance = newBalance;
-      store.maxAmountToSend = await store.wallet?.getMaxAmountToSend();
+    store.wallet?.addListener(new class extends MoneroWalletListener {
+      async onSyncProgress(height: number, _startHeight: number, endHeight: number, percentDone: number) {
+
+        let update = false;
+        const distance = endHeight - height;
+        // if (distance >= 1000 && distance % 1000 === 0) {
+        //   update = true;
+        // } else
+        if (distance < 10) {
+          update = true;
+        } else if (distance <= 100 && (height % 10 === 0)) {
+          update = true;
+        } else if (distance <= 1000 && (height % 100 === 0)) {
+          update = true;
+        } else if (height % 1000 === 0) {
+          update = true;
+        }
+
+        if (update) {
+          store.syncStatus = percentDone === 1 ? "Synced" : `Syncing ${height}/${endHeight}`;
+
+          if ((height % 1000 === 0) || percentDone === 1) {
+            await store.wallet?.save();
+          }
+        } else if (percentDone === 1) {
+          store.syncStatus = "Synced";
+          await store.wallet?.save();
+        }
+      }
+
+      async onBalancesChanged(newBalance: bigint, newUnlockedBalance: bigint) {
+        store.balance = {
+          piconero: Number(newBalance),
+          xmr: Number(newBalance) / 1e12,
+          usd: Number(newBalance) * (store.exchangeRate ?? 0),
+        } as BalanceResponse
+        store.unlockedBalance = {
+          piconero: Number(newUnlockedBalance),
+          xmr: Number(newUnlockedBalance) / 1e12,
+          usd: Number(newUnlockedBalance) * (store.exchangeRate ?? 0),
+        } as BalanceResponse
+      }
+
+      async onNewBlock(height: number) {
+        store.lastBlockHeight = height;
+      }
     });
-    cancelWatchTokenTxs = store.wallet?.watchAddressTokenTransactions(async(tx) => {
-      if(!store.wallet) return // should never happen
-      const walletPkh = binToHex(store.wallet.getPublicKeyHash() as Uint8Array);
-      const tokenOutput = tx.vout.find(elem => elem.scriptPubKey.hex.includes(walletPkh));
-      const tokenId = tokenOutput?.tokenData?.category;
-      if(!tokenId) return;
-      const previousTokenList = store.tokenList;
-      const isNewCategory = !previousTokenList?.find(elem => elem.tokenId == tokenId);
-      await store.updateTokenList();
-      // Dynamically import tokenmetadata
-      if(isNewCategory) await importRegistries([tokenId]);
-    });
+
+    cancelWatchWallet = async () => {
+      await store.wallet?.stopSyncing();
+      await store.wallet?.removeListener(store.wallet?.getListeners()[0]);
+    }
+
+    await store.wallet?.startSyncing(15000);
   }
 
-  async function changeNetwork(newNetwork: 'mainnet' | 'chipnet'){
+  async function changeNetwork(newNetwork: 'mainnet' | 'testnet', server: string){
     // cancel active listeners
-    if(cancelWatchBchtxs && cancelWatchTokenTxs){
-      cancelWatchBchtxs()
-      cancelWatchTokenTxs()
+    if(cancelWatchWallet){
+      await cancelWatchWallet()
     }
-    const walletClass = (newNetwork == 'mainnet')? Wallet : TestNetWallet;
-    const newWallet = await walletClass.named(nameWallet);
+
+    const seed = await store.wallet?.getSeed();
+
+    await store.wallet?.close(true);
+
+    let newWallet: MoneroWalletFull;
+    if (await MoneroWalletFull.walletExists(`${nameWallet}-${store.network}`, undefined)) {
+      newWallet = await MoneroWalletFull.openWallet({
+        path: `${nameWallet}-${store.network}`,
+        server: server,
+        networkType: MoneroNetworkType.parse(store.network ?? "mainnet"),
+      });
+    } else {
+      newWallet = await createWalletFull({
+        seed: seed,
+        path: `${nameWallet}-${store.network}`,
+        server: server,
+        networkType: MoneroNetworkType.parse(store.network ?? "mainnet"),
+      });
+    }
     setWallet(newWallet);
     localStorage.setItem('network', newNetwork);
     // reset wallet to default state
     store.balance = undefined;
-    store.maxAmountToSend = undefined;
-    store.plannedTokenId = undefined;
-    store.tokenList = null;
-    store.nrBcmrRegistries = undefined;
+    store.unlockedBalance = undefined;
     changeView(1);
-  }
-
-  // Import onchain resolved BCMRs
-  async function importRegistries(tokenIds: string[]) {
-    let metadataPromises = [];
-    for (const tokenId of tokenIds) {
-      try {
-        const metadataPromise = fetch(`${bcmrIndexer.value}/registries/${tokenId}/latest`);
-        metadataPromises.push(metadataPromise);
-      } catch (error) { /*console.log(error)*/ }
-    }
-    console.time('Promises BCMR indexer');
-    const resolveMetadataPromsises = Promise.all(metadataPromises);
-    const resultsMetadata = await resolveMetadataPromsises;
-    console.timeEnd('Promises BCMR indexer');
-    console.time('response.json()');
-    for await (const response of resultsMetadata){
-      if (response?.status != 404) {
-        const jsonResponse = await response.json();
-        BCMR.addMetadataRegistry(jsonResponse);
-      }
-    }
-    console.timeEnd('response.json()');
   }
 
   // Wallet connect dialog functionality
@@ -160,7 +188,7 @@
     const { topic, params, id } = event;
     const { request } = params;
     const method = request.method;
-    const walletAddress = store.wallet?.getDepositAddress();
+    const walletAddress = await store.wallet?.getPrimaryAddress();
 
     switch (method) {
       case "bch_getAddresses":
@@ -202,25 +230,23 @@
 
 <template>
   <header>
-    <img :src="settingsStore.darkMode? 'images/cashonize-logo-dark.png' : 'images/cashonize-logo.png'" alt="Cashonize: a Bitcoin Cash Wallet" style="height: 85px;" >
+    <!-- ᗰOᑎᑌᒍO logo font https://www.fontspace.com/evil-typewriter-font-f86236 -->
+    <img :src="settingsStore.darkMode? 'images/monujo-logo.png' : 'images/monujo-logo.png'" alt="Monujo: a Monero Web Wallet" style="height: 85px;" >
+    <span class="primaryColor" style="font-size: x-large">Monero Web Wallet</span>
     <nav v-if="displayView" style="display: flex; justify-content: center;" class="tabs">
-      <div @click="changeView(1)" v-bind:style="displayView == 1 ? {color: 'var(--color-primary'} : ''">BchWallet</div>
-      <div @click="changeView(2)" v-bind:style="displayView == 2 ? {color: 'var(--color-primary'} : ''">MyTokens</div>
-      <div v-if="!isMobile" @click="changeView(3)" v-bind:style="displayView == 3 ? {color: 'var(--color-primary'} : ''">CreateTokens</div>
+      <div @click="changeView(1)" v-bind:style="displayView == 1 ? {color: 'var(--color-primary'} : ''">XMR Wallet</div>
       <div @click="changeView(4)" v-bind:style="displayView == 4 ? {color: 'var(--color-primary'} : ''">{{isMobile?  "Connect" : "WalletConnect"}}</div>
       <div @click="changeView(5)">
-        <img style="vertical-align: text-bottom;" v-bind:src="displayView == 5 ? 'images/settingsGreen.svg' : 
+        <img style="vertical-align: text-bottom;" v-bind:src="displayView == 5 ? 'images/settingsActive.svg' :
           settingsStore.darkMode? 'images/settingsLightGrey.svg' : 'images/settings.svg'">
       </div>
     </nav>
   </header>
   <main style="margin: 20px auto; max-width: 78rem;">
     <newWalletView v-if="!store.wallet" @init-wallet="(arg) => setWallet(arg)"/>
-    <bchWalletView v-if="displayView == 1"/>
-    <myTokensView v-if="displayView == 2"/>
-    <createTokensView v-if="displayView == 3"/>
+    <walletView v-if="displayView == 1"/>
     <connectView v-if="displayView == 4" :dappUriUrlParam="dappUriUrlParam"/>
-    <settingsMenu v-if="displayView == 5" @change-network="(arg) => changeNetwork(arg)" @change-view="(arg) => changeView(arg)"/>
+    <settingsMenu v-if="displayView == 5" @change-network="(newNetwork, server) => changeNetwork(newNetwork, server)" @change-view="(arg) => changeView(arg)"/>
   </main>
   <div v-if="transactionRequestWC">
     <WC2TransactionRequest :transactionRequestWC="transactionRequestWC" :dappMetadata="dappMetadata" @signed-transaction="(arg:string) => signedTransaction(arg)" @reject-transaction="rejectTransaction()"/>

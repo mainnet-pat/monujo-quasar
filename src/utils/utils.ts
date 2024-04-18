@@ -1,27 +1,20 @@
-import { type UtxoI } from "mainnet-js"
-
-export function getAllNftTokenBalances(tokenUtxos: UtxoI[]){
-  const result:Record<string, number> = {};
-  const nftUtxos = tokenUtxos.filter((val) => val.token?.commitment !== undefined);
-  for (const utxo of nftUtxos) {
-    if(!utxo.token?.tokenId) return // should never happen
-    if (!result[utxo.token.tokenId]) {
-      result[utxo.token.tokenId] = 0;
-    }
-    result[utxo.token.tokenId] += 1;
+export const getServer = (network: string): string => {
+  let server = localStorage.getItem(`server-${network}`);
+  if (server) {
+    return server;
   }
-  return result
-}
 
-export function getFungibleTokenBalances(tokenUtxos: UtxoI[]){
-  const result:Record<string, bigint> = {};
-  const fungiblesUtxos = tokenUtxos.filter((val) => val.token?.amount);
-  for (const utxo of fungiblesUtxos) {
-    if(!utxo.token?.tokenId) return  // should never happen
-    if (!result[utxo.token.tokenId]) {
-      result[utxo.token?.tokenId] = 0n;
-    }
-    result[utxo.token?.tokenId] += utxo.token.amount;
+  switch (network){
+    case "mainnet":
+      server = "https://monerod.slvit.us:443";
+      break;
+    case "testnet":
+      server = "https://testnet.xmr.ditatompel.com:443";
+      break;
+    default:
+      throw new Error(`Unknown network: ${network}`);
   }
-  return result
+
+  localStorage.setItem(`server-${network}`, server);
+  return server;
 }

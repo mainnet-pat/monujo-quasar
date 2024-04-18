@@ -1,6 +1,6 @@
-# Cashonize (cashonize-quasar)
+# Monujo (monujo-quasar)
 
-Cashonize: a Bitcoin Cash Wallet
+Monujo: a Monero Web Wallet
 
 ## Install the dependencies
 ```bash

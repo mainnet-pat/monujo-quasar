@@ -80,12 +80,21 @@ module.exports = configure(function (/* ctx */) {
       // distDir
 
       // extendViteConf (viteConf) {},
-      // viteVuePluginOptions: {},
+      viteVuePluginOptions: {
+        template: {
+          compilerOptions: {
+            isCustomElement: (tag) => tag === ('qr-code')
+          }
+        }
+      },
 
-      
       vitePlugins: [
         [
-          nodePolyfills
+          nodePolyfills({
+            overrides: {
+              fs: 'indexeddb-fs',
+            },
+          })
         ],
         [
           topLevelAwait,
@@ -210,8 +219,8 @@ module.exports = configure(function (/* ctx */) {
 
       builder: {
         // https://www.electron.build/configuration/configuration
-        
-        appId: 'com.cashonize.quasar',
+
+        appId: 'com.monujo.quasar',
         nsis: {
           createDesktopShortcut: "always",
           differentialPackage: false

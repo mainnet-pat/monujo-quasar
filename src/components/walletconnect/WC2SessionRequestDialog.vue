@@ -18,7 +18,7 @@
   let needsNetworkSwitch = false;
 
   const dappNetworkPrefix = requiredNamespaces.bch.chains[0]?.split(":")[1];
-  const dappTargetNetwork = dappNetworkPrefix == "bitcoincash" ? "mainnet" : "chipnet";
+  const dappTargetNetwork = dappNetworkPrefix == "bitcoincash" ? "mainnet" : "testnet";
   if(dappTargetNetwork !== store.network) needsNetworkSwitch = true
 
   function approveSessionWC() {
@@ -33,7 +33,7 @@
 <template>
   <q-dialog v-model="showDialog" persistent transition-show="scale" transition-hide="scale">
     <q-card>
-      <fieldset class="dialogFieldset"> 
+      <fieldset class="dialogFieldset">
         <legend style="font-size: large;">Approve Session?</legend>
         <div style="display: flex;">
           <img :src="dappMetadata.icons[0]" style="display: flex; height: 55px; width: 55px;">

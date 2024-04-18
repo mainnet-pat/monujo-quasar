@@ -2,8 +2,10 @@
 @import 'chota';
 
 :root {
-  --color-primary: #0ac18f;
+  --color-primary: rgb(224,111,55);
   --toggle-height: 1.7rem;
+  --toggle-bg-on: rgb(224,111,55);
+  --toggle-border-on: rgb(224,111,55);
 }
 
 #app {
@@ -37,15 +39,23 @@ nav div{
 b {
   font-weight: 700;
 }
-a,
+a {
+  text-decoration: none;
+  color: rgb(224,111,55);
+  transition: 0.4s;
+}
 .green {
   text-decoration: none;
   color: hsla(160, 100%, 37%, 1);
   transition: 0.4s;
 }
 
+.primaryColor {
+  color: var(--color-primary);
+}
+
 .primaryButton {
-  background-color: var(--color-primary); 
+  background-color: var(--color-primary);
   color: white;
 }
 .icon {
@@ -72,7 +82,7 @@ a,
   width: 50%;
   margin-left: 5px;
 }
-.fillInMaxBch{
+.fillInMaxValue{
   margin-left: 5px;
 }
 .input-icon {
@@ -196,7 +206,7 @@ input[type=number] {
     width: 140px;
     margin-left: 5px;
   }
-  .fillInMaxBch{
+  .fillInMaxValue{
     padding: 1rem 1.5rem;
   }
   .actionBar span {

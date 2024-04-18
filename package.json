@@ -1,27 +1,29 @@
 {
-  "name": "cashonize-quasar",
+  "name": "monujo-quasar",
   "version": "0.0.4",
-  "description": "Cashonize is a Bitcoin Cash (BCH) Wallet which supports CashTokens and WalletConnect.",
-  "productName": "Cashonize",
+  "description": "Monujo is a Monero (XMR) Web Wallet which supports WalletConnect.",
+  "productName": "Monujo",
   "author": "",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mr-zwets/cashonize-quasar.git"
+    "url": "https://github.com/mr-zwets/monujo-quasar.git"
   },
   "private": true,
   "scripts": {
+    "copy-monero-ts-artifacts": "rsync --update  -raz node_modules/monero-ts/dist/monero_w* ./public/",
+    "postinstall": "yarn patch-package",
     "lint": "eslint --ext .js,.ts,.vue ./",
     "format": "prettier --write \"**/*.{js,ts,vue,css,html,md,json}\" --ignore-path .gitignore",
     "test": "echo \"No test specified\" && exit 0",
-    "dev": "quasar dev",
-    "build": "quasar build"
+    "dev": "yarn copy-monero-ts-artifacts && quasar dev",
+    "build": "yarn && quasar build"
   },
   "dependencies": {
+    "@bitauth/libauth": "2.0.0",
     "@bitjson/qr-code": "^1.0.2",
     "@capacitor/app": "^5.0.7",
     "@capacitor/core": "^5.7.4",
     "@download/blockies": "^1.0.3",
-    "@mainnet-cash/indexeddb-storage": "^2.2.7",
     "@quasar/extras": "^1.16.4",
     "@types/blockies": "^0.0.4",
     "@vueform/toggle": "^2.1.4",
@@ -29,7 +31,8 @@
     "@walletconnect/core": "^2.11.1",
     "@walletconnect/web3wallet": "^1.10.1",
     "chota": "^0.9.2",
-    "mainnet-js": "^2.3.9",
+    "indexeddb-fs": "http://github.com/mainnet-pat/indexeddb-fs#2.1.5",
+    "monero-ts": "../monero-ts",
     "pinia": "^2.1.7",
     "quasar": "^2.14.3",
     "vue": "^3.3.4",
@@ -46,6 +49,7 @@
     "eslint": "^8.11.0",
     "eslint-config-prettier": "^8.1.0",
     "eslint-plugin-vue": "^9.0.0",
+    "patch-package": "^8.0.0",
     "prettier": "^2.5.1",
     "typescript": "^4.5.4",
     "vite-plugin-node-polyfills": "^0.19.0",

@@ -47,11 +47,11 @@ module.exports = {
     // https://eslint.vuejs.org/user-guide/#why-doesn-t-it-work-on-vue-files
     // required to lint *.vue files
     'vue'
-    
+
     // https://github.com/typescript-eslint/typescript-eslint/issues/389#issuecomment-509292674
     // Prettier has not been included as plugin to avoid performance impact
     // add it as an extension for your IDE
-    
+
   ],
 
   globals: {
@@ -73,7 +73,7 @@ module.exports = {
     "@typescript-eslint/ban-ts-comment": "off",
     "@typescript-eslint/no-explicit-any" : "off",
     // quotes: ['warn', 'single', { avoidEscape: true }],
-    
+
     'prefer-promise-reject-errors': 'off',
 
     // this rule, if on, would require explicit return type on the `render` function
@@ -82,6 +82,11 @@ module.exports = {
     // in plain CommonJS modules, you can't use `import foo = require('foo')` to pass this rule, so it has to be disabled
     '@typescript-eslint/no-var-requires': 'off',
 
+    // silence 'Forbidden non-null assertion'
+    '@typescript-eslint/no-non-null-assertion': 'off',
+    'vue/multi-word-component-names': ['error', {
+      'ignores': ['wallet']
+    }],
     // The core 'no-unused-vars' rules (in the eslint:recommended ruleset)
     // does not work with type definitions
     'no-unused-vars': 'off',

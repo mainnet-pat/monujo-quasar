@@ -21,18 +21,21 @@
   const activeSessions = computed(() => walletconnectStore.activeSessions)
 
   async function connectDappUriInput(){
-    try {
-      if(!dappUriInput.value) throw("Enter a BCH WalletConnect URI");
-      await web3wallet?.core.pairing.pair({ uri: dappUriInput.value });
-      dappUriInput.value = "";
-    } catch(error) {
-      const errorMessage = typeof error == 'string' ? error : "Not a valid BCH WalletConnect URI"
-      $q.notify({
-        message: errorMessage,
-        icon: 'warning',
-        color: typeof error == 'string' ? "grey-7" : "red"
-      })
-    }
+    alert("Work in progress, stay tuned");
+    return;
+
+    // try {
+    //   if(!dappUriInput.value) throw("Enter a BCH WalletConnect URI");
+    //   await web3wallet?.core.pairing.pair({ uri: dappUriInput.value });
+    //   dappUriInput.value = "";
+    // } catch(error) {
+    //   const errorMessage = typeof error == 'string' ? error : "Not a valid BCH WalletConnect URI"
+    //   $q.notify({
+    //     message: errorMessage,
+    //     icon: 'warning',
+    //     color: typeof error == 'string' ? "grey-7" : "red"
+    //   })
+    // }
   }
 
   if(props.dappUriUrlParam){
@@ -62,7 +65,7 @@
         ],
         chains: store.network === "mainnet" ? ["bch:bitcoincash"] : ["bch:bchtest"],
         events: [ "addressesChanged" ],
-        accounts: [`bch:${store.wallet?.getDepositAddress()}`],
+        accounts: [`bch:${store.walletAddress}`],
       }
     }
 
@@ -118,7 +121,7 @@
     <div v-else>
       No Active Sessions
     </div>
-    
+
   </fieldset>
 </template>
 

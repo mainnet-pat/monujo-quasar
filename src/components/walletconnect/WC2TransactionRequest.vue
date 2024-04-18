@@ -1,7 +1,6 @@
 <script setup lang="ts">
   import { ref, toRefs } from 'vue';
   import { lockingBytecodeToCashAddress, hexToBin, binToHex, importWalletTemplate, walletTemplateP2pkhNonHd, walletTemplateToCompilerBCH, secp256k1, generateTransaction, encodeTransaction, sha256, hash256, SigningSerializationFlag, generateSigningSerializationBCH } from "@bitauth/libauth"
-  import { BCMR, convert } from "mainnet-js"
   import { getSdkError } from '@walletconnect/utils';
   import type { DappMetadata } from "src/interfaces/interfaces"
   import { useStore } from 'src/stores/store'
@@ -44,13 +43,13 @@
 
   const abs = (value: bigint) => (value < 0n) ? -value : value;
 
-  const satoshiToBCHString = (amount:bigint) => {
+  const piconeroToXMRString = (amount:bigint) => {
     const numberAmount = Number(amount);
     if (Math.abs(numberAmount / (10 ** 3)) > 1000) {
-      const bchAmount = numberAmount * (10 ** -8)
-      return `${bchAmount.toFixed(8)} BCH`
+      const bchAmount = numberAmount * (10 ** -12)
+      return `${bchAmount.toFixed(8)} XMR`
     } else {
-      return `${numberAmount} sat`
+      return `${numberAmount} piconero`
     }
   };
 
@@ -68,10 +67,10 @@
     return Number(newUsdValue.toFixed(2));
   }
 
-  const bchSpentInputs:bigint = requestParams.sourceOutputs.reduce((total:bigint, sourceOutputs:any) => 
+  const bchSpentInputs:bigint = requestParams.sourceOutputs.reduce((total:bigint, sourceOutputs:any) =>
     toCashaddr(sourceOutputs.lockingBytecode) == store?.wallet?.getDepositAddress() ? total + sourceOutputs.valueSatoshis : total, 0n
   );
-  const bchReceivedOutputs:bigint = txDetails.outputs.reduce((total:bigint, outputs:any) => 
+  const bchReceivedOutputs:bigint = txDetails.outputs.reduce((total:bigint, outputs:any) =>
     toCashaddr(outputs.lockingBytecode) == store?.wallet?.getDepositAddress() ? total + outputs.valueSatoshis : total, 0n
   );
   const bchBalanceChange = bchReceivedOutputs - bchSpentInputs;
@@ -192,7 +191,7 @@
 <template>
   <q-dialog v-model="showDialog" persistent transition-show="scale" transition-hide="scale">
     <q-card>
-      <fieldset class="dialogFieldsetTxRequest"> 
+      <fieldset class="dialogFieldsetTxRequest">
         <legend style="font-size: large;">Sign Transaction</legend>
         <div style="font-size: large; margin-top: 2rem;">Origin:</div>
         <div style="display: flex;">
@@ -217,7 +216,7 @@
                     (this wallet)
                   </span>
                 </td>
-                <td>{{ satoshiToBCHString(input.valueSatoshis) }}</td>
+                <td>{{ piconeroToXMRString(input.valueSatoshis) }}</td>
               </tr>
               <tr v-if="input.contract">
                 <td></td>
@@ -252,7 +251,7 @@
                     (this wallet)
                   </span>
                 </td>
-                <td>{{ satoshiToBCHString(output.valueSatoshis) }}</td>
+                <td>{{ piconeroToXMRString(output.valueSatoshis) }}</td>
               </tr>
               <tr v-if="output?.token">
                 <td></td>
@@ -273,14 +272,14 @@
           <hr>
           <div class="wc-modal-heading">Balance Change:</div>
           <div>
-            {{ bchBalanceChange > 0 ? '+ ': '- '}} {{ satoshiToBCHString(abs(bchBalanceChange)) }}
+            {{ bchBalanceChange > 0 ? '+ ': '- '}} {{ piconeroToXMRString(abs(bchBalanceChange)) }}
             ({{ usdBalanceChange }}$)
           </div>
           <div v-for="tokenArrayInput in tokensSpentInputs" :key="tokenArrayInput.category">
             <div v-for="(tokenSpent, index) in tokenArrayInput" :key="tokenArrayInput.category + index">
             - {{tokenArrayInput.nft ? "NFT" : "Token"}}
             {{ BCMR.getTokenInfo(binToHex(tokenSpent.category))?.name ?
-              BCMR.getTokenInfo(binToHex(tokenSpent.category))?.name : 
+              BCMR.getTokenInfo(binToHex(tokenSpent.category))?.name :
               binToHex(tokenSpent.category).slice(0,6)  + '...'
             }}
             </div>
@@ -289,7 +288,7 @@
             <div v-for="(tokenReceived, index) in tokenArrayRecived" :key="tokenArrayRecived.category + index">
             + {{tokenReceived.nft ? "NFT" : "Token"}}
             {{ BCMR.getTokenInfo(binToHex(tokenReceived.category))?.name ?
-              BCMR.getTokenInfo(binToHex(tokenReceived.category))?.name : 
+              BCMR.getTokenInfo(binToHex(tokenReceived.category))?.name :
               binToHex(tokenReceived.category).slice(0,6)  + '...'
             }}
             {{ tokenReceived.amount ? "amount: "+ (tokenReceived.amount / (10n ** BigInt(BCMR.getTokenInfo(binToHex(tokenReceived.category))?.token?.decimals ?? 0n))) : ""}}

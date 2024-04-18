@@ -1,7 +1,7 @@
 {
-  "name": "cashonize-quasar",
+  "name": "monujo-quasar",
   "version": "0.0.3",
-  "description": "Cashonize: a Bitcoin Cash Wallet",
+  "description": "Monujo: a Monero Web Wallet",
   "private": true,
   "dependencies": {
     "@capacitor/android": "^5.0.0",

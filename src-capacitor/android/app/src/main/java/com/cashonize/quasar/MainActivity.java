@@ -1,4 +1,4 @@
-package com.cashonize.quasar;
+package com.monujo.quasar;
 
 import com.getcapacitor.BridgeActivity;
 

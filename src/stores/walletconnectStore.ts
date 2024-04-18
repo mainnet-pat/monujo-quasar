@@ -18,17 +18,17 @@ export const useWalletconnectStore = defineStore('walletconnectStore', () => {
     const newweb3wallet = await Web3Wallet.init({
       core,
       metadata: {
-        name: 'Cashonize',
-        description: 'Cashonize BitcoinCash Web Wallet',
-        url: 'cashonize.com/',
-        icons: ['https://cashonize.com/images/favicon.ico'],
+        name: 'Monujo',
+        description: 'Monujo BitcoinCash Web Wallet',
+        url: 'monujo.cash/',
+        icons: ['https://monujo.cash/images/favicon.ico'],
       }
     })
 
     web3wallet.value = newweb3wallet
     activeSessions.value = web3wallet.value.getActiveSessions();
   }
-  
+
 
   return { web3wallet, activeSessions, initweb3wallet }
 })
