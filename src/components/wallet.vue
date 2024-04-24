@@ -4,6 +4,7 @@
   import { useStore } from '../stores/store'
   import { useSettingsStore } from '../stores/settingsStore'
   import { useQuasar } from 'quasar'
+  import { convert } from '../utils/utils'
   const $q = useQuasar()
   const store = useStore()
   const settingsStore = useSettingsStore()
@@ -23,21 +24,6 @@
   const xmrSendAmount = ref(undefined as (number | undefined));
   const usdSendAmount = ref(undefined as (number | undefined));
   const destinationAddr = ref("");
-
-  function convert(amount: number, unit1: string, unit2: string): number {
-    if (unit1 === "usd") {
-      const multiplier = unit2 === "piconero" ? 1e12 : 1;
-
-      return Math.round(1e12 * amount / store.exchangeRate! * multiplier) / 1e12;
-    }
-
-    if (unit2 === "usd") {
-      const multiplier = unit1 === "piconero" ? 1e12 : 1;
-      return Math.round(100 * amount * store.exchangeRate! / multiplier) / 100;
-    }
-
-    return 0;
-  }
 
   function copyToClipboard(item: string|undefined){
     if(item) navigator.clipboard.writeText(item);
@@ -59,7 +45,7 @@
       usdSendAmount.value = undefined
       return
     }
-    const newUsdValue = await convert(xmrSendAmount.value, settingsStore.xmrUnit, "usd");
+    const newUsdValue = convert(xmrSendAmount.value, settingsStore.xmrUnit, "usd", store.exchangeRate!);
     usdSendAmount.value = Number(newUsdValue.toFixed(2));
   }
   async function setXmrAmount() {
@@ -67,7 +53,7 @@
       xmrSendAmount.value = undefined
       return
     }
-    const newXmrValue = await convert(usdSendAmount.value, "usd", settingsStore.xmrUnit);
+    const newXmrValue = convert(usdSendAmount.value, "usd", settingsStore.xmrUnit, store.exchangeRate!);
     xmrSendAmount.value = Number(newXmrValue);
   }
   async function useMaxXmrAmount(){
@@ -95,7 +81,7 @@
           address: destinationAddr.value,
           amount: amount,
           accountIndex: 0,
-          relay: true,
+          relay: false,
       });
       await store.wallet?.sync();
       await store.wallet?.save();

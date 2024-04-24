@@ -17,8 +17,8 @@
   const { requiredNamespaces } = sessionProposal.params;
   let needsNetworkSwitch = false;
 
-  const dappNetworkPrefix = requiredNamespaces.bch.chains[0]?.split(":")[1];
-  const dappTargetNetwork = dappNetworkPrefix == "bitcoincash" ? "mainnet" : "testnet";
+  const dappNetworkPrefix = requiredNamespaces.xmr.chains[0]?.split(":")[1];
+  const dappTargetNetwork = dappNetworkPrefix == "mainnet" ? "mainnet" : "testnet";
   if(dappTargetNetwork !== store.network) needsNetworkSwitch = true
 
   function approveSessionWC() {
@@ -43,7 +43,7 @@
           </div>
         </div>
         <div style="margin-top: 2rem; display: flex; gap: 1rem;">
-          <input type="button" class="primaryButton" :value="needsNetworkSwitch ?`Switch to ${dappTargetNetwork} and approve`: 'Approve'" @click="() => approveSessionWC()" v-close-popup>
+          <input type="button" class="primaryButton" :value="needsNetworkSwitch ? `Switch to ${dappTargetNetwork} and approve`: 'Approve'" @click="() => approveSessionWC()" v-close-popup>
           <input type="button" value="Reject" v-close-popup @click="() => rejectSessionWC()">
         </div>
       </fieldset>

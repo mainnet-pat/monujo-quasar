@@ -39,6 +39,7 @@
 
       emit('initWallet', wallet);
     } catch (error) {
+      console.log(error)
       const errorMessage = typeof error == 'string' ? error : "Not a valid seed phrase"
       $q.notify({
         message: errorMessage,

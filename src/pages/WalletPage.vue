@@ -4,12 +4,16 @@
   import settingsMenu from 'src/components/settingsMenu.vue'
   import connectView from 'src/components/walletConnect.vue'
   import WC2TransactionRequest from 'src/components/walletconnect/WC2TransactionRequest.vue';
+  import WC2SignatureRequest from 'src/components/walletconnect/WC2SignatureRequest.vue';
   import { ref, computed } from 'vue'
+  import { useRouter } from 'vue-router'
   import type { Web3WalletTypes } from '@walletconnect/web3wallet';
   import { useStore } from 'src/stores/store'
   import { useSettingsStore } from 'src/stores/settingsStore'
   import { useWalletconnectStore } from 'src/stores/walletconnectStore'
   import { BalanceResponse } from 'src/interfaces/interfaces';
+  import { stringifyExtendedJson, parseExtendedJson } from 'src/utils/utils';
+  const router = useRouter()
   const store = useStore()
   const settingsStore = useSettingsStore()
   const walletconnectStore = useWalletconnectStore()
@@ -19,14 +23,16 @@
   const isMobile = computed(() => width.value < 480)
 
   const props = defineProps<{
-    uri: string | undefined
+    uri: string | undefined,
+    hash: string | undefined,
   }>()
 
   const nameWallet = 'mywallet';
   let cancelWatchWallet: undefined | (() => Promise<void>);
 
   const displayView = ref(undefined as (number | undefined));
-  const transactionRequestWC = ref(undefined as any);
+  const transactionRequestWC = ref(undefined as Web3WalletTypes.SessionRequest | undefined);
+  const signatureRequestWC = ref(undefined as any);
   const dappMetadata = ref(undefined as any);
   const dappUriUrlParam = ref(undefined as undefined|string);
 
@@ -60,14 +66,15 @@
     const web3wallet = walletconnectStore.web3wallet;
     web3wallet?.on('session_request', async (event) => wcRequest(event));
     // check if session request in URL params
-    if(props?.uri?.startsWith('wc:')){
-      dappUriUrlParam.value = props.uri
+    if(props?.hash?.startsWith('#/wc/wc?uri=')){
+      router.replace('/');
+      dappUriUrlParam.value = props.hash?.replace('#/wc/wc?uri=', '');
       changeView(4);
     }
     // fetch wallet balance
     console.time('Balance Promises');
-    const promiseWalletBalance = store.wallet.getBalance();
-    const promiseunlockedBalance = store.wallet.getUnlockedBalance();
+    const promiseWalletBalance = store.wallet.getBalance(0, 0);
+    const promiseunlockedBalance = store.wallet.getUnlockedBalance(0, 0);
     const promiseLastBlockHeight = store.wallet.getDaemonHeight();
     const promiseExchangeRate = fetch("https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=usd", {});
     const promises = [promiseWalletBalance,promiseunlockedBalance,promiseExchangeRate,promiseLastBlockHeight];
@@ -92,10 +99,53 @@
   }
 
   async function setUpWalletSubscriptions(){
+    // transactionRequestWC.value = {
+    //   topic: "",
+    //   id: 0,
+    //   params: {
+    //     request: {
+    //       method: "",
+          // params: {
+          //   transaction: {
+          //     destinations: [
+          //       {
+          //         address: "9xGZuCEjC4B2KGVrterGuKK6iskFP3RarWsjSNrY7F49dPq26gDJr2DgavcpqRxWh9UFUds64Lie5DfxR5BFwVVKDMCaTjW",
+          //         amount: BigInt(1e12),
+          //       },
+          //       {
+          //         address: store.walletAddress!,
+          //         amount: BigInt(1e12),
+          //       },
+          //     ],
+          //     // amount: BigInt(1e12),
+          //     accountIndex: 0,
+          //     relay: false,
+          //   } as Partial<MoneroTxConfig>,
+          //   userPrompt: "Sign this transaction",
+          //   broadcast: false,
+          // },
+    //     },
+    //   }
+    // } as Web3WalletTypes.SessionRequest;
+    // signatureRequestWC.value = {
+    //   topic: "",
+    //   id: 0,
+    //   params: {
+    //     request: {
+    //       method: "xmr_signMessage",
+    //       params: {
+    //         message: "Test message",
+    //         userPrompt: "Sign this message",
+    //       },
+    //     },
+    //   },
+    // } as Web3WalletTypes.SessionRequest;
+
     store.wallet?.addListener(new class extends MoneroWalletListener {
       async onSyncProgress(height: number, _startHeight: number, endHeight: number, percentDone: number) {
 
         let update = false;
+        let save = false;
         const distance = endHeight - height;
         // if (distance >= 1000 && distance % 1000 === 0) {
         //   update = true;
@@ -106,19 +156,38 @@
           update = true;
         } else if (distance <= 1000 && (height % 100 === 0)) {
           update = true;
-        } else if (height % 1000 === 0) {
+        } else if (distance <= 10000 && (height % 1000 === 0)) {
           update = true;
+        }
+        if (height % 1000 === 0) {
+          update = true;
+        }
+
+        if (height % 5000 === 0) {
+          save = true;
+        }
+
+        if (!store.syncStatus) {
+          update = true;
+        }
+
+        if ((save) || percentDone === 1) {
+          console.log("saving at height", height)
+          await store.wallet?.stopSyncing();
+          await store.wallet?.save();
+          await store.wallet?.startSyncing(15000);
         }
 
         if (update) {
           store.syncStatus = percentDone === 1 ? "Synced" : `Syncing ${height}/${endHeight}`;
-
-          if ((height % 1000 === 0) || percentDone === 1) {
-            await store.wallet?.save();
-          }
         } else if (percentDone === 1) {
+          const [balance, unlockedBalance] = await Promise.all([store.wallet!.getBalance(0, 0), store.wallet!.getUnlockedBalance(0, 0)]);
+          await this.onBalancesChanged(balance, unlockedBalance);
+
           store.syncStatus = "Synced";
+          await store.wallet?.stopSyncing();
           await store.wallet?.save();
+          await store.wallet?.startSyncing(15000);
         }
       }
 
@@ -191,25 +260,48 @@
     const walletAddress = await store.wallet?.getPrimaryAddress();
 
     switch (method) {
-      case "bch_getAddresses":
-      case "bch_getAccounts": {
+      case "xmr_getAddresses":
+      case "xmr_getAccounts": {
         const result = [walletAddress];
         const response = { id, jsonrpc: '2.0', result };
         web3wallet.respondSessionRequest({ topic, response });
       }
         break;
-      case "bch_signMessage":
-      case "personal_sign": {
-        alert("bch_signMessage")
+      case "xmr_getBalance": {
+        const result = JSON.parse(stringifyExtendedJson(await store.wallet?.getBalance(0, 0)));
+        const response = { id, jsonrpc: '2.0', result };
+        web3wallet.respondSessionRequest({ topic, response });
       }
         break;
-      case "bch_signTransaction": {
+      case "xmr_getUnlockedBalance": {
+        const result = JSON.parse(stringifyExtendedJson(await store.wallet?.getUnlockedBalance(0, 0)));
+        const response = { id, jsonrpc: '2.0', result };
+        web3wallet.respondSessionRequest({ topic, response });
+      }
+        break;
+      case "xmr_getBalances": {
+        const balance = await store.wallet?.getBalance(0, 0);
+        const unlocked = await store.wallet?.getUnlockedBalance(0, 0);
+        const response = { id, jsonrpc: '2.0', result: JSON.parse(stringifyExtendedJson({
+          balance: balance,
+          unlocked: unlocked,
+        })) };
+        web3wallet.respondSessionRequest({ topic, response });
+      }
+        break;
+      case "xmr_signMessage":
+      case "personal_sign":
+      case "xmr_signTransaction": {
         const sessions = web3wallet.getActiveSessions();
         const session = sessions[topic];
         if (!session) return;
         const metadataDapp = session.peer.metadata;
-        dappMetadata.value = metadataDapp
-        transactionRequestWC.value = event;
+        dappMetadata.value = metadataDapp;
+        if (method === "xmr_signTransaction") {
+          transactionRequestWC.value = event;
+        } else {
+          signatureRequestWC.value = event;
+        }
       }
         break;
       default:{
@@ -220,11 +312,21 @@
   }
   // Reset transactionRequestWC after sign or reject
   function signedTransaction(txId:string){
-    alert("Transaction succesfully sent! Txid:" + txId)
+    console.log("Transaction succesfully sent! Txid:" + txId)
     transactionRequestWC.value = undefined;
   }
   function rejectTransaction(){
+    console.log("Transaction rejected");
     transactionRequestWC.value = undefined;
+  }
+  // Reset signatureRequestWC after sign or reject
+  function signedMessage(message:string){
+    console.log("Message succesfully signed! Message:" + message)
+    signatureRequestWC.value = undefined;
+  }
+  function rejectMessage(){
+    console.log("Message rejected");
+    signatureRequestWC.value = undefined;
   }
 </script>
 
@@ -250,5 +352,8 @@
   </main>
   <div v-if="transactionRequestWC">
     <WC2TransactionRequest :transactionRequestWC="transactionRequestWC" :dappMetadata="dappMetadata" @signed-transaction="(arg:string) => signedTransaction(arg)" @reject-transaction="rejectTransaction()"/>
+  </div>
+  <div v-if="signatureRequestWC">
+    <WC2SignatureRequest :signatureRequestWC="signatureRequestWC" :dappMetadata="dappMetadata" @signed-message="(arg:string) => signedMessage(arg)" @reject-message="rejectMessage()"/>
   </div>
 </template>

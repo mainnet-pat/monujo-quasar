@@ -4,7 +4,10 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/',
     component: () => import('pages/WalletPage.vue'),
-    props: route => ({ uri: route.query.uri })
+    props: route => ({
+        uri: route.query.uri,
+        hash: route.hash,
+       }),
   },
 
   {

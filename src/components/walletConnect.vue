@@ -3,6 +3,7 @@
   import { ref, computed } from 'vue'
   import WC2SessionRequestDialog from 'src/components/walletconnect/WC2SessionRequestDialog.vue';
   import WC2ActiveSession from 'src/components/walletconnect/WC2ActiveSession.vue'
+  import type { Web3WalletTypes } from '@walletconnect/web3wallet';
   import { getSdkError } from '@walletconnect/utils';
   import { useStore } from 'src/stores/store'
   import { useWalletconnectStore } from 'src/stores/walletconnectStore'
@@ -17,38 +18,49 @@
   }>()
 
   const dappUriInput = ref("");
-  const sessionProposalWC = ref(undefined as any);
+  const sessionProposalWC = ref(undefined as Web3WalletTypes.SessionProposal | undefined);
   const activeSessions = computed(() => walletconnectStore.activeSessions)
 
   async function connectDappUriInput(){
-    alert("Work in progress, stay tuned");
-    return;
-
-    // try {
-    //   if(!dappUriInput.value) throw("Enter a BCH WalletConnect URI");
-    //   await web3wallet?.core.pairing.pair({ uri: dappUriInput.value });
-    //   dappUriInput.value = "";
-    // } catch(error) {
-    //   const errorMessage = typeof error == 'string' ? error : "Not a valid BCH WalletConnect URI"
-    //   $q.notify({
-    //     message: errorMessage,
-    //     icon: 'warning',
-    //     color: typeof error == 'string' ? "grey-7" : "red"
-    //   })
-    // }
+    try {
+      if(!dappUriInput.value) throw("Enter XMR WalletConnect URI");
+      await web3wallet?.core.pairing.pair({ uri: dappUriInput.value });
+      dappUriInput.value = "";
+    } catch(error) {
+      const errorMessage = typeof error == 'string' ? error : "Not a valid XMR WalletConnect URI"
+      $q.notify({
+        message: errorMessage,
+        icon: 'warning',
+        color: typeof error == 'string' ? "grey-7" : "red"
+      })
+    }
   }
 
-  if(props.dappUriUrlParam){
-    await web3wallet?.core.pairing.pair({ uri: props.dappUriUrlParam })
+  if (props.dappUriUrlParam) {
+    try {
+      await web3wallet?.core.pairing.pair({ uri: props.dappUriUrlParam });
+    } catch {}
   }
 
   web3wallet?.on('session_proposal', wcSessionProposal);
 
-  async function wcSessionProposal(sessionProposal: any) {
+  async function wcSessionProposal(sessionProposal: Web3WalletTypes.SessionProposal) {
     const { requiredNamespaces } = sessionProposal.params;
-
-    if (!requiredNamespaces.bch) {
+    if (!requiredNamespaces.xmr) {
       alert(`You are trying to connect an app from unsupported blockchain(s): ${Object.keys(requiredNamespaces).join(", ")}`);
+      return;
+    }
+
+    const [chain, network] = requiredNamespaces.xmr?.chains?.[0]?.split(":") ?? [];
+    if (chain !== `xmr`) {
+      alert(`Rejecting connection from unsupported chain: ${chain}`);
+      rejectSession(sessionProposal.params.id);
+      return;
+    }
+
+    if (network !== store.network) {
+      alert(`Switch network to ${network} and retry`);
+      rejectSession(sessionProposal.params.id);
       return;
     }
 
@@ -57,15 +69,18 @@
 
   async function approveSession(sessionProposal: any){
     const namespaces = {
-      bch: {
+      xmr: {
         methods: [
-          "bch_getAddresses",
-          "bch_signTransaction",
-          "bch_signMessage"
+          "xmr_getAddresses",
+          "xmr_getBalance",
+          "xmr_getUnlockedBalance",
+          "xmr_getBalances",
+          "xmr_signTransaction",
+          "xmr_signMessage",
         ],
-        chains: store.network === "mainnet" ? ["bch:bitcoincash"] : ["bch:bchtest"],
+        chains: [`xmr:${store.network}`],
         events: [ "addressesChanged" ],
-        accounts: [`bch:${store.walletAddress}`],
+        accounts: [`xmr:${store.network}:${store.walletAddress}`],
       }
     }
 
@@ -79,7 +94,11 @@
     sessionProposalWC.value = undefined;
   }
 
-  function rejectSession(){
+  async function rejectSession(id?: number){
+    await web3wallet?.rejectSession({
+      id: id ?? sessionProposalWC.value?.id ?? 0,
+      reason: getSdkError("USER_REJECTED")
+    });
     sessionProposalWC.value = undefined;
   }
 
@@ -112,14 +131,11 @@
 
     <br/>
 
-    <div v-if="activeSessions">
+    <div v-if="activeSessions && Object.keys(activeSessions ?? {}).length">
       Active Sessions:
       <div v-for="sessionInfo in Object.values(activeSessions).reverse()" :key="sessionInfo.topic" class="wc2sessions" >
         <WC2ActiveSession :dappMetadata="sessionInfo.peer.metadata" :sessionId="sessionInfo.topic" @delete-session="(arg) => deleteSession(arg)"/>
       </div>
-    </div>
-    <div v-else>
-      No Active Sessions
     </div>
 
   </fieldset>

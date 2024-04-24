@@ -1,10 +1,14 @@
 <script setup lang="ts">
   import { ref, toRefs } from 'vue';
-  import { lockingBytecodeToCashAddress, hexToBin, binToHex, importWalletTemplate, walletTemplateP2pkhNonHd, walletTemplateToCompilerBCH, secp256k1, generateTransaction, encodeTransaction, sha256, hash256, SigningSerializationFlag, generateSigningSerializationBCH } from "@bitauth/libauth"
   import { getSdkError } from '@walletconnect/utils';
-  import type { DappMetadata } from "src/interfaces/interfaces"
+  import type { DappMetadata, TransactionRequest, SessionRequest } from "src/interfaces/interfaces"
   import { useStore } from 'src/stores/store'
   import { useWalletconnectStore } from 'src/stores/walletconnectStore'
+  import { convert, parseExtendedJson } from 'src/utils/utils'
+  import { stringify } from '@bitauth/libauth';
+  import { useQuasar } from 'quasar';
+  import { MoneroTxWallet } from "monero-ts";
+  const $q = useQuasar()
   const store = useStore()
   const walletconnectStore = useWalletconnectStore()
   const web3wallet = walletconnectStore.web3wallet
@@ -14,32 +18,9 @@
 
   const props = defineProps<{
     dappMetadata: DappMetadata,
-    transactionRequestWC: any
+    transactionRequestWC: SessionRequest<TransactionRequest>
   }>()
   const { transactionRequestWC } = toRefs(props);
-
-  const parseExtendedJson = (jsonString: string) => {
-    const uint8ArrayRegex = /^<Uint8Array: 0x(?<hex>[0-9a-f]*)>$/u;
-    const bigIntRegex = /^<bigint: (?<bigint>[0-9]*)n>$/;
-
-    return JSON.parse(jsonString, (_key, value) => {
-      if (typeof value === "string") {
-        const bigintMatch = value.match(bigIntRegex);
-        if (bigintMatch) {
-          return BigInt(bigintMatch[1]);
-        }
-        const uint8ArrayMatch = value.match(uint8ArrayRegex);
-        if (uint8ArrayMatch) {
-          return hexToBin(uint8ArrayMatch[1]);
-        }
-      }
-      return value;
-    });
-  }
-
-  const { id, topic } = transactionRequestWC.value;
-  const requestParams = parseExtendedJson(JSON.stringify(transactionRequestWC.value.params.request.params));
-  const txDetails = requestParams.transaction;
 
   const abs = (value: bigint) => (value < 0n) ? -value : value;
 
@@ -53,128 +34,53 @@
     }
   };
 
-  const toCashaddr = (lockingBytecode:Uint8Array) => {
-    const prefix = store.network == "mainnet" ? "bitcoincash" : "bchtest";
-    // check for opreturn
-    if(binToHex(lockingBytecode).startsWith("6a")) return "opreturn:" +  binToHex(lockingBytecode)
-    const result = lockingBytecodeToCashAddress(lockingBytecode,prefix);
-    if (typeof result !== "string") throw result;
-    return result;
-  }
-
   async function convertToUsd(satAmount: bigint) {
-    const newUsdValue = await convert(Number(satAmount), "sat", "usd");
+    const newUsdValue = convert(Number(satAmount), "piconero", "usd", store.exchangeRate!);
     return Number(newUsdValue.toFixed(2));
   }
 
-  const bchSpentInputs:bigint = requestParams.sourceOutputs.reduce((total:bigint, sourceOutputs:any) =>
-    toCashaddr(sourceOutputs.lockingBytecode) == store?.wallet?.getDepositAddress() ? total + sourceOutputs.valueSatoshis : total, 0n
-  );
-  const bchReceivedOutputs:bigint = txDetails.outputs.reduce((total:bigint, outputs:any) =>
-    toCashaddr(outputs.lockingBytecode) == store?.wallet?.getDepositAddress() ? total + outputs.valueSatoshis : total, 0n
-  );
-  const bchBalanceChange = bchReceivedOutputs - bchSpentInputs;
+  const { id, topic } = transactionRequestWC.value;
+  const requestParams = parseExtendedJson(stringify(transactionRequestWC.value.params.request.params, 0)) as TransactionRequest;
+  let draftTransaction!: MoneroTxWallet;
+  try {
+    draftTransaction = await store.wallet!.createTx({
+      ...requestParams.transaction,
+      relay: false,
+      accountIndex: 0, // override
+      subaddressIndex: 0, // override
+    });
+  } catch (error: any) {
+    console.log(error);
+
+    $q.notify({
+      message: "WalletConnect: Failed to create transaction: " + error.message,
+      icon: 'error',
+      color: "red-4",
+      timeout: 10000,
+      multiLine: false,
+      group: false,
+    });
+
+    const response = { id, jsonrpc: '2.0', error: getSdkError('USER_REJECTED') };
+    await web3wallet?.respondSessionRequest({ topic, response });
+    emit('rejectTransaction');
+  }
+
+  const bchSpentInputs: bigint = draftTransaction?.incomingTransfers?.reduce((total:bigint, transfer:any) => total + (transfer.address == store?.walletAddress ? transfer.amount : 0n), 0n) ?? 0n;
+  const bchReceivedOutputs: bigint = draftTransaction?.outgoingTransfer?.destinations?.reduce((total:bigint, destination:any) => total + (destination.address !== store?.walletAddress ? destination.amount : 0n), 0n);
+  const bchBalanceChange = bchSpentInputs - bchReceivedOutputs;
   const usdBalanceChange = await convertToUsd(bchBalanceChange);
 
-  const tokensSpentInputs: any = {}
-  const tokensReceivedOutputs: any = {}
-  for (const input of requestParams.sourceOutputs) {
-    const walletOrigin = toCashaddr(input.lockingBytecode) == store?.wallet?.getDepositAddress();
-    if(input.token && walletOrigin){
-      const tokenCategory = binToHex(input.token.category);
-      if(tokensSpentInputs[tokenCategory])tokensSpentInputs[tokenCategory].push(input.token);
-      else tokensSpentInputs[tokenCategory] = [input.token];
-    }
-  }
-  for (const output of txDetails.outputs) {
-    const walletDestination = toCashaddr(output.lockingBytecode) == store?.wallet?.getDepositAddress();
-    if(output.token && walletDestination){
-      const tokenCategory = binToHex(output.token.category);
-      if(tokensReceivedOutputs[tokenCategory]) tokensReceivedOutputs[tokenCategory].push(output.token);
-      else tokensReceivedOutputs[tokenCategory] = [output.token];
-    }
-  }
-
+  const xmrFee = draftTransaction?.fee;
+  const usdFee = await convertToUsd(draftTransaction?.fee);
 
   async function signTransactionWC() {
-    const privateKey = store?.wallet?.privateKey;
-    const pubkeyCompressed = store?.wallet?.publicKeyCompressed
-    if(!privateKey || !pubkeyCompressed) return
-
-    // prepare libauth template for input signing
-    const template = importWalletTemplate(walletTemplateP2pkhNonHd);
-    if (typeof template === "string") throw new Error("Transaction template error");
-
-    // configure compiler
-    const compiler = walletTemplateToCompilerBCH(template);
-
-    const txTemplate = {...txDetails};
-
-    for (const [index, input] of txTemplate.inputs.entries()) {
-      const sourceOutputsUnpacked = requestParams.sourceOutputs;
-      if (sourceOutputsUnpacked[index].contract?.artifact.contractName) {
-        // instruct compiler to produce signatures for relevant contract inputs
-
-        // replace pubkey and sig placeholders
-        let unlockingBytecodeHex = binToHex(sourceOutputsUnpacked[index].unlockingBytecode);
-        const sigPlaceholder = "41" + binToHex(Uint8Array.from(Array(65)));
-        const pubkeyPlaceholder = "21" + binToHex(Uint8Array.from(Array(33)));
-        if (unlockingBytecodeHex.indexOf(sigPlaceholder) !== -1) {
-          // compute the signature argument
-          const hashType = SigningSerializationFlag.allOutputs | SigningSerializationFlag.utxos | SigningSerializationFlag.forkId;
-          const context = { inputIndex: index, sourceOutputs: sourceOutputsUnpacked, transaction: txDetails };
-          const signingSerializationType = new Uint8Array([hashType]);
-
-          const coveredBytecode = sourceOutputsUnpacked[index].contract?.redeemScript;
-          if (!coveredBytecode) {
-            alert("Not enough information provided, please include contract redeemScript");
-            return;
-          }
-          const sighashPreimage = generateSigningSerializationBCH(context, { coveredBytecode, signingSerializationType });
-          const sighash = hash256(sighashPreimage);
-          const signature = secp256k1.signMessageHashSchnorr(privateKey, sighash);
-          if (typeof signature === "string") {
-            alert(signature);
-            return;
-          }
-          const sig = Uint8Array.from([...signature, hashType]);
-
-          unlockingBytecodeHex = unlockingBytecodeHex.replace(sigPlaceholder, "41" + binToHex(sig));
-        }
-        if (unlockingBytecodeHex.indexOf(pubkeyPlaceholder) !== -1) {
-          unlockingBytecodeHex = unlockingBytecodeHex.replace(pubkeyPlaceholder, "21" + binToHex(pubkeyCompressed));
-        }
-
-        input.unlockingBytecode = hexToBin(unlockingBytecodeHex);
-      } else {
-        // replace unlocking bytecode for non-contract inputs having placeholder unlocking bytecode
-        const sourceOutput = sourceOutputsUnpacked[index];
-        if (!sourceOutput.unlockingBytecode?.length && toCashaddr(sourceOutput.lockingBytecode) === store.wallet?.getDepositAddress()) {
-           input.unlockingBytecode = {
-            compiler,
-             data: {
-              keys: { privateKeys: { key: privateKey } },
-            },
-            valueSatoshis: sourceOutput.valueSatoshis,
-            script: "unlock",
-            token: sourceOutput.token,
-          }
-        }
-      }
-    };
-
-    // generate and encode transaction
-    const generated = generateTransaction(txTemplate);
-    if (!generated.success) throw Error(JSON.stringify(generated.errors, null, 2));
-
-    const encoded = encodeTransaction(generated.transaction);
-    const hash = binToHex(sha256.hash(sha256.hash(encoded)).reverse());
-    const signedTxObject = { signedTransaction: binToHex(encoded), signedTransactionHash: hash };
+    const signedTxObject = { signedTransaction: draftTransaction?.metadata, signedTransactionHash: draftTransaction?.hash };
 
     // send transaction
     const response = { id, jsonrpc: '2.0', result: signedTxObject };
     if (requestParams.broadcast) {
-      await store.wallet?.submitTransaction(hexToBin(signedTxObject.signedTransaction));
+      await store.wallet?.relayTx(draftTransaction?.metadata);
     }
     await web3wallet?.respondSessionRequest({ topic, response });
 
@@ -184,7 +90,17 @@
   async function rejectTransaction(){
     const response = { id, jsonrpc: '2.0', error: getSdkError('USER_REJECTED') };
     await web3wallet?.respondSessionRequest({ topic, response });
-    emit('rejectTransaction')
+    emit('rejectTransaction');
+  }
+
+  function copyToClipboard(text: string) {
+    navigator.clipboard.writeText(text);
+    $q.notify({
+      message: "Copied to clipboard",
+      icon: 'done',
+      color: "yellow-10",
+      timeout: 1
+    });
   }
 </script>
 
@@ -198,43 +114,25 @@
           <img :src="dappMetadata.icons[0]" style="display: flex; height: 55px; width: 55px;">
           <div style="margin-left: 10px;">
             <div>{{ dappMetadata.name }}</div>
-            <a :href="dappMetadata.url">{{ dappMetadata.url }}</a>
+            <a :href="dappMetadata.url" target="_blank">{{ dappMetadata.url.replace("https://", "") }}</a>
           </div>
         </div>
         <hr style="margin-top: 2rem;">
 
         <div class="wc-modal-details">
           <div style="display: flex; justify-content: center; font-size: larger;"> {{ requestParams.userPrompt }}</div>
-          <div class="wc-modal-heading">Inputs:</div>
+          <div v-if="draftTransaction?.incomingTransfers" class="wc-modal-heading">Inputs:</div>
           <table class="wc-data-table">
-            <tbody v-for="(input, inputIndex) in requestParams.sourceOutputs" :key="input.outpointTransactionHash">
+            <tbody v-for="(transfer, transferIndex) in draftTransaction?.incomingTransfers ?? []" :key="transferIndex">
               <tr>
-                <td>{{ inputIndex }}</td>
+                <td>{{ transferIndex }}</td>
                 <td>
-                  {{ toCashaddr(input.lockingBytecode).slice(0,25)  + '...' }}
-                  <span v-if="toCashaddr(input.lockingBytecode) == store?.wallet?.getDepositAddress()" class="thisWalletTag">
+                  {{ transfer.address.slice(0,20)  + '...' }}
+                  <span v-if="transfer.address === store?.walletAddress" class="thisWalletTag">
                     (this wallet)
                   </span>
                 </td>
-                <td>{{ piconeroToXMRString(input.valueSatoshis) }}</td>
-              </tr>
-              <tr v-if="input.contract">
-                <td></td>
-                <td style="font-weight: 600;">Contract: {{input.contract.artifact.contractName}}, Function: {{ input.contract.abiFunction.name }}</td>
-              </tr>
-              <tr v-if="input?.token">
-                <td></td>
-                <td>
-                  {{input?.token?.nft && !input?.token?.amount ? 'NFT:' : 'Token:'}}
-                  {{ binToHex(input.token.category).slice(0,6)  + '...'}}
-                  <span style="font-weight: 600;">{{BCMR.getTokenInfo(binToHex(input.token.category))?.name }}</span>
-                </td>
-                <td v-if="input.token.amount">Amount: {{ input.token.amount }}</td>
-              </tr>
-              <tr v-if="input?.token?.nft">
-                <td></td>
-                <td>Commitment: {{ binToHex(input.token.nft.commitment) }}</td>
-                <td>Capability: {{ input.token.nft.capability }}</td>
+                <td>{{ piconeroToXMRString(transfer.amount) }}</td>
               </tr>
             </tbody>
           </table>
@@ -242,57 +140,29 @@
           </div>
           <div class="wc-modal-heading">Outputs:</div>
           <table class="wc-data-table">
-            <tbody v-for="(output, outputIndex) in txDetails.outputs" :key="output.outpointTransactionHash">
+            <tbody v-for="(destination, destinationIndex) in draftTransaction?.outgoingTransfer.destinations" :key="destinationIndex">
               <tr>
-                <td>{{ outputIndex }}</td>
-                <td>
-                  {{ toCashaddr(output.lockingBytecode).slice(0,25)  + '...' }}
-                  <span v-if="toCashaddr(output.lockingBytecode) == store?.wallet?.getDepositAddress()" class="thisWalletTag">
+                <td style="font-weight: 500;">{{ destinationIndex }}</td>
+                <td @click="() => copyToClipboard(destination.address)">
+                  {{ destination.address.slice(0,20)  + '...' }}
+                  <span v-if="destination.address === store?.walletAddress" class="thisWalletTag">
                     (this wallet)
                   </span>
                 </td>
-                <td>{{ piconeroToXMRString(output.valueSatoshis) }}</td>
-              </tr>
-              <tr v-if="output?.token">
-                <td></td>
-                <td>
-                  {{output?.token?.nft && !output?.token?.amount ? 'NFT:' : 'Token:'}}
-                  {{ binToHex(output.token.category).slice(0,6)  + '...'}}
-                  <span style="font-weight: 600;">{{ BCMR.getTokenInfo(binToHex(output.token.category))?.name }}</span>
-                </td>
-                <td v-if="output.token.amount">Amount: {{ output.token.amount }}</td>
-              </tr>
-              <tr v-if="output?.token?.nft">
-                <td></td>
-                <td>Commitment: {{ binToHex(output.token.nft.commitment) }}</td>
-                <td>Capability: {{ output.token.nft.capability }}</td>
+                <td>{{ piconeroToXMRString(destination.amount) }}</td>
               </tr>
             </tbody>
           </table>
           <hr>
-          <div class="wc-modal-heading">Balance Change:</div>
-          <div>
+          <div v-if="bchBalanceChange !== 0n" class="wc-modal-heading">Balance Change:</div>
+          <div v-if="bchBalanceChange !== 0n">
             {{ bchBalanceChange > 0 ? '+ ': '- '}} {{ piconeroToXMRString(abs(bchBalanceChange)) }}
             ({{ usdBalanceChange }}$)
           </div>
-          <div v-for="tokenArrayInput in tokensSpentInputs" :key="tokenArrayInput.category">
-            <div v-for="(tokenSpent, index) in tokenArrayInput" :key="tokenArrayInput.category + index">
-            - {{tokenArrayInput.nft ? "NFT" : "Token"}}
-            {{ BCMR.getTokenInfo(binToHex(tokenSpent.category))?.name ?
-              BCMR.getTokenInfo(binToHex(tokenSpent.category))?.name :
-              binToHex(tokenSpent.category).slice(0,6)  + '...'
-            }}
-            </div>
-          </div>
-          <div v-for="tokenArrayRecived in tokensReceivedOutputs" :key="tokenArrayRecived.category">
-            <div v-for="(tokenReceived, index) in tokenArrayRecived" :key="tokenArrayRecived.category + index">
-            + {{tokenReceived.nft ? "NFT" : "Token"}}
-            {{ BCMR.getTokenInfo(binToHex(tokenReceived.category))?.name ?
-              BCMR.getTokenInfo(binToHex(tokenReceived.category))?.name :
-              binToHex(tokenReceived.category).slice(0,6)  + '...'
-            }}
-            {{ tokenReceived.amount ? "amount: "+ (tokenReceived.amount / (10n ** BigInt(BCMR.getTokenInfo(binToHex(tokenReceived.category))?.token?.decimals ?? 0n))) : ""}}
-            </div>
+          <div class="wc-modal-heading">Fee:</div>
+          <div>
+            {{ piconeroToXMRString(abs(xmrFee)) }}
+            ({{ usdFee }}$)
           </div>
           <div class="wc-modal-bottom-buttons">
             <input type="button" class="primaryButton" value="Sign" @click="() => signTransactionWC()" v-close-popup>
@@ -344,7 +214,7 @@
     width: 111px;
   }
   .thisWalletTag{
-    color: hsla(160, 100%, 37%, 1)
+    color: var(--color-primary);
   }
 
   @media only screen and (max-width: 570px) {

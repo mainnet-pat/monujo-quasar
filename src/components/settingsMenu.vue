@@ -3,7 +3,7 @@
   import { ref } from 'vue'
   import { useStore } from '../stores/store'
   import { useSettingsStore } from '../stores/settingsStore'
-  import fs from 'indexeddb-fs';
+  import fs from '@mainnet-pat/indexeddb-fs';
 
   const nameWallet = "mywallet";
 
@@ -38,8 +38,9 @@
         break;
     }
     selectedServer.value = store.server as string;
-    localStorage.setItem(`server-${store.network}`, store.server);
-    emit('changeNetwork', selectedNetwork.value, selectedServer.value);
+    localStorage.setItem('network', store.network);
+    localStorage.setItem(`server-${store.network}`, store.server!);
+    location.reload();
   }
   function changeServer(){
     store.server = selectedServer.value as string;
