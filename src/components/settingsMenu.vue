@@ -3,7 +3,7 @@
   import { ref } from 'vue'
   import { useStore } from '../stores/store'
   import { useSettingsStore } from '../stores/settingsStore'
-  import fs from '@mainnet-pat/indexeddb-fs';
+  import { promises as fs } from 'fs';
 
   const nameWallet = "mywallet";
 
@@ -29,7 +29,7 @@
     switch (selectedNetwork.value){
       case "mainnet":
         store.network = "mainnet";
-        store.server = localStorage.getItem(`server-${store.network}`) ?? "https://monerod.slvit.us:443";
+        store.server = localStorage.getItem(`server-${store.network}`) ?? "https://node.sethforprivacy.com:443";
         break;
       case "testnet":
         store.network = "testnet";
@@ -58,9 +58,9 @@
   async function confirmDeleteWallet(){
     let text = "You are about to delete your Monujo wallet info from this browser.\nAre you sure you want to delete?";
     if (confirm(text)){
-      await fs.removeFile(`${nameWallet}-${store.network}`);
-      await fs.removeFile(`${nameWallet}-${store.network}.address.txt`);
-      await fs.removeFile(`${nameWallet}-${store.network}.keys`);
+      await fs.unlink(`${nameWallet}-${store.network}`);
+      await fs.unlink(`${nameWallet}-${store.network}.address.txt`);
+      await fs.unlink(`${nameWallet}-${store.network}.keys`);
       location.reload();
     }
   }

@@ -8,7 +8,7 @@ export const getServer = (network: string): string => {
 
   switch (network){
     case "mainnet":
-      server = "https://monerod.slvit.us:443";
+      server = "https://node.sethforprivacy.com:443";
       break;
     case "testnet":
       server = "https://testnet.xmr.ditatompel.com:443";
