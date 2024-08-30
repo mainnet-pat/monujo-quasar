@@ -13,12 +13,12 @@
   import { useWalletconnectStore } from 'src/stores/walletconnectStore'
   import { BalanceResponse } from 'src/interfaces/interfaces';
   import { stringifyExtendedJson, parseExtendedJson } from 'src/utils/utils';
+  import { MoneroNetworkType, MoneroWalletFull, MoneroWalletListener, createWalletFull, LibraryUtils } from 'monero-ts'
+  import { useWindowSize } from '@vueuse/core'
   const router = useRouter()
   const store = useStore()
   const settingsStore = useSettingsStore()
   const walletconnectStore = useWalletconnectStore()
-  import { useWindowSize } from '@vueuse/core'
-  import { MoneroNetworkType, MoneroWalletFull, MoneroWalletListener, createWalletFull } from 'monero-ts'
   const { width } = useWindowSize();
   const isMobile = computed(() => width.value < 480)
 
@@ -37,15 +37,15 @@
   const dappUriUrlParam = ref(undefined as undefined|string);
 
   // check if wallet exists
-  const mainnetWalletExists = await MoneroWalletFull.walletExists(`${nameWallet}-${store.network}`, undefined);
-  const testnetWalletExists = await MoneroWalletFull.walletExists(`${nameWallet}-${store.network}`, undefined);
+  const mainnetWalletExists = await MoneroWalletFull.walletExists(`${nameWallet}-mainnet`, undefined);
+  const testnetWalletExists = await MoneroWalletFull.walletExists(`${nameWallet}-testnet`, undefined);
   const walletExists = mainnetWalletExists || testnetWalletExists;
   if (walletExists) {
     // initialise wallet on configured network
     const initWallet = await MoneroWalletFull.openWallet({
       path: `${nameWallet}-${store.network}`,
       server: store.server,
-      networkType: MoneroNetworkType.parse(store.network ?? "mainnet"),
+      networkType: MoneroNetworkType.parse(store.network ?? (mainnetWalletExists ? "mainnet" : "testnet")),
     });
     setWallet(initWallet);
   }

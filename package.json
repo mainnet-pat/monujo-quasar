@@ -24,7 +24,7 @@
     "@capacitor/app": "^5.0.7",
     "@capacitor/core": "^5.7.4",
     "@download/blockies": "^1.0.3",
-    "@mainnet-pat/opfs": "^0.0.1",
+    "@mainnet-pat/indexeddb-fs": "^2.1.12",
     "@quasar/extras": "^1.16.4",
     "@types/blockies": "^0.0.4",
     "@vueform/toggle": "^2.1.4",

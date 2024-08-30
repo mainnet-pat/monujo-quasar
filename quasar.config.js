@@ -92,7 +92,7 @@ module.exports = configure(function (/* ctx */) {
         [
           nodePolyfills({
             overrides: {
-              fs: '@mainnet-pat/opfs',
+              fs: '@mainnet-pat/indexeddb-fs',
             },
           })
         ],
