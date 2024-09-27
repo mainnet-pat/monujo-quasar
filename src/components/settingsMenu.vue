@@ -40,7 +40,7 @@
     selectedServer.value = store.server as string;
     localStorage.setItem('network', store.network);
     localStorage.setItem(`server-${store.network}`, store.server!);
-    location.reload();
+    emit('changeNetwork', selectedNetwork.value, selectedServer.value);
   }
   function changeServer(){
     store.server = selectedServer.value as string;

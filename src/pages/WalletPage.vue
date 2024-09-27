@@ -12,8 +12,8 @@
   import { useSettingsStore } from 'src/stores/settingsStore'
   import { useWalletconnectStore } from 'src/stores/walletconnectStore'
   import { BalanceResponse } from 'src/interfaces/interfaces';
-  import { stringifyExtendedJson, parseExtendedJson } from 'src/utils/utils';
-  import { MoneroNetworkType, MoneroWalletFull, MoneroWalletListener, createWalletFull, LibraryUtils } from 'monero-ts'
+  import { stringifyExtendedJson } from 'src/utils/utils';
+  import { MoneroNetworkType, MoneroWalletFull, MoneroWalletListener, createWalletFull } from 'monero-ts'
   import { useWindowSize } from '@vueuse/core'
   const router = useRouter()
   const store = useStore()
@@ -99,48 +99,6 @@
   }
 
   async function setUpWalletSubscriptions(){
-    // transactionRequestWC.value = {
-    //   topic: "",
-    //   id: 0,
-    //   params: {
-    //     request: {
-    //       method: "",
-          // params: {
-          //   transaction: {
-          //     destinations: [
-          //       {
-          //         address: "9xGZuCEjC4B2KGVrterGuKK6iskFP3RarWsjSNrY7F49dPq26gDJr2DgavcpqRxWh9UFUds64Lie5DfxR5BFwVVKDMCaTjW",
-          //         amount: BigInt(1e12),
-          //       },
-          //       {
-          //         address: store.walletAddress!,
-          //         amount: BigInt(1e12),
-          //       },
-          //     ],
-          //     // amount: BigInt(1e12),
-          //     accountIndex: 0,
-          //     relay: false,
-          //   } as Partial<MoneroTxConfig>,
-          //   userPrompt: "Sign this transaction",
-          //   broadcast: false,
-          // },
-    //     },
-    //   }
-    // } as Web3WalletTypes.SessionRequest;
-    // signatureRequestWC.value = {
-    //   topic: "",
-    //   id: 0,
-    //   params: {
-    //     request: {
-    //       method: "xmr_signMessage",
-    //       params: {
-    //         message: "Test message",
-    //         userPrompt: "Sign this message",
-    //       },
-    //     },
-    //   },
-    // } as Web3WalletTypes.SessionRequest;
-
     store.wallet?.addListener(new class extends MoneroWalletListener {
       async onSyncProgress(height: number, _startHeight: number, endHeight: number, percentDone: number) {
 
