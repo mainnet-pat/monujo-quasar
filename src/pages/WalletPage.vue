@@ -314,4 +314,11 @@
   <div v-if="signatureRequestWC">
     <WC2SignatureRequest :signatureRequestWC="signatureRequestWC" :dappMetadata="dappMetadata" @signed-message="(arg:string) => signedMessage(arg)" @reject-message="rejectMessage()"/>
   </div>
+  <div style="display: flex; position: absolute; bottom: 0px; right: 10px; flex-direction: column;">
+    <span style="text-align: end;">
+    Brought to you by
+      <a href="https://x.com/mainnet_pat" style="margin-left: 0.5rem;">mainnet_pat</a>
+    </span>
+    <span style="text-align: end;">Donations are welcome ❤️ 89cajfVxGiPX1Fnhjo3zTkMfnU22WbaqHGK8Ef2TxnAM7kE47JWri2v7gctGmJakd7cTq2R8eHRfPF73LWsYyQCRBRM61Hn</span>
+  </div>
 </template>
